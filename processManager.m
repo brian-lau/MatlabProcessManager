@@ -122,7 +122,8 @@ classdef processManager < handle
          p.FunctionName = 'processManager constructor';
          p.addParamValue('id','',@isstr);
          p.addParamValue('command','',@isstr);
-         p.addParamValue('workingDir','',@isstr);
+         %p.addParamValue('workingDir','',@isstr);
+         p.addParamValue('workingDir','',@(x) exist(x,'dir')==7);
          p.addParamValue('envp','',@iscell);
          p.addParamValue('printStdout',true,@islogical);
          p.addParamValue('printStderr',true,@islogical);
@@ -273,7 +274,7 @@ classdef processManager < handle
                if printFlag
                   c = char(line);
                   if ~isempty(c)
-                     if exist('linewrap') == 2
+                     if exist('linewrap','file') == 2
                         if isempty(prefix)
                            str = linewrap(c);
                         else
