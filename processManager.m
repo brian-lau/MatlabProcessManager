@@ -122,7 +122,6 @@ classdef processManager < handle
          p.FunctionName = 'processManager constructor';
          p.addParamValue('id','',@isstr);
          p.addParamValue('command','',@isstr);
-         %p.addParamValue('workingDir','',@isstr);
          p.addParamValue('workingDir','',@(x) exist(x,'dir')==7);
          p.addParamValue('envp','',@iscell);
          p.addParamValue('printStdout',true,@islogical);
@@ -176,6 +175,7 @@ classdef processManager < handle
             % http://stackoverflow.com/questions/8595748/java-runtime-exec
             self(i).pollTimer = timer('ExecutionMode','FixedRate',...
                'Period',self(i).pollInterval,...
+               'Name',[self(i).id '-pollTimer'],...
                'TimerFcn',{@processManager.poll self(i)});
             start(self(i).pollTimer);
          end
