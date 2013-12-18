@@ -179,7 +179,7 @@ classdef processManager < handle
             % http://stackoverflow.com/questions/8595748/java-runtime-exec
             self(i).pollTimer = timer('ExecutionMode','FixedRate',...
                'Period',self(i).pollInterval,...
-               'Name',[self(i).id 'processManager-pollTimer'],...
+               'Name',[self(i).id '-processManager-pollTimer'],...
                'TimerFcn',{@processManager.poll self(i)});
             start(self(i).pollTimer);
          end
@@ -187,16 +187,17 @@ classdef processManager < handle
 
       function stop(self)
          for i = 1:numel(self)
-            if ~isempty(self(i).process)
-               self(i).process.destroy();
-               self(i).stdout.close();
-               self(i).stderr.close();
-            end
             if ~isempty(self(i).pollTimer) && isvalid(self(i).pollTimer)
                stop(self(i).pollTimer);
                delete(self(i).pollTimer);
                fprintf('processManager uninstalling timer for process %s.\n',self(i).id)
             end
+            if ~isempty(self(i).process)
+               self(i).stdout.close();
+               self(i).stderr.close();
+               self(i).process.destroy();
+            end
+            self(i).running; % This seems to force an update
             self(i).check();
          end
       end
@@ -233,7 +234,7 @@ classdef processManager < handle
                % Remove timer here since the destructor isn't called correctly?
                % Must be because the timer callback references the object...
                % http://blogs.mathworks.com/loren/2013/07/23/deconstructing-destructors/
-               if isvalid(self(i).pollTimer)
+               if ~isempty(self(i).pollTimer) && isvalid(self(i).pollTimer)
                   if strcmp(self(i).pollTimer.Running,'on')
                      stop(self(i).pollTimer);
                   end
@@ -269,8 +270,19 @@ classdef processManager < handle
    methods(Static)
       function poll(event,string_arg,obj)
          obj.check(true);
-         obj.readStream(obj.stderr,obj.printStderr,obj.id);
-         obj.readStream(obj.stdout,obj.printStdout,obj.id);
+         try
+            obj.readStream(obj.stderr,obj.printStderr,obj.id);
+            obj.readStream(obj.stdout,obj.printStdout,obj.id);
+         catch err
+            any(strfind(err.message,'process hasn''t exited'))
+            if any(strfind(err.message,'java.io.IOException: Stream closed'))
+               % pass
+               % delete timer?
+               fprintf('projectManager timer is polling a closed stream!\n');
+            else
+               rethrow(err);
+            end
+         end
       end
       
       function count = readStream(stream,printFlag,prefix)
