@@ -121,7 +121,7 @@ classdef processManager < handle
          p.KeepUnmatched= false;
          p.FunctionName = 'processManager constructor';
          p.addParamValue('id','',@isstr);
-         p.addParamValue('command','',@isstr);
+         p.addParamValue('command','',@(x) isstr(x) || isa(x,'java.lang.String[]'));
          p.addParamValue('workingDir','',@(x) exist(x,'dir')==7);
          p.addParamValue('envp','',@iscell);
          p.addParamValue('printStdout',true,@islogical);
@@ -158,6 +158,10 @@ classdef processManager < handle
             self(i).process = runtime.exec(self(i).command,...
                self(i).envp,...
                java.io.File(self(i).workingDir));
+            % StringTokenizer is used to parse the command based on spaces
+            % this may not be what we want, there is an overload of exec() 
+            % that allows passing in a String array.
+            % http://www.mathworks.com/matlabcentral/newsreader/view_thread/308816
             
             % Process will block if streams not drained
             self(i).stdout = java.io.BufferedReader(...
@@ -188,11 +192,12 @@ classdef processManager < handle
                self(i).stdout.close();
                self(i).stderr.close();
             end
-            if ~isempty(self(i).pollTimer)
+            if ~isempty(self(i).pollTimer) && isvalid(self(i).pollTimer)
                stop(self(i).pollTimer);
                delete(self(i).pollTimer);
                fprintf('processManager uninstalling timer for process %s.\n',self(i).id)
             end
+            self(i).check();
          end
       end
 
@@ -234,7 +239,6 @@ classdef processManager < handle
                   end
                end
                delete(self(i).pollTimer);
-               %self.pollTimer = [];
                if ~silent
                   fprintf('Process %s finished with exit value %g.\n',self(i).id,self(i).exitValue);
                end
