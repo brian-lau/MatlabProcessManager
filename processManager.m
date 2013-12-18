@@ -211,17 +211,38 @@ classdef processManager < handle
             [~,exitValue] = self.isRunning(self.process);
          end
       end
+
+      % Does not work for object array...
+%       function set.printStdout(self,bool)
+%          for i = numel(self)
+%             self(i).printStdout = bool;
+%          end
+%       end
       
-      function check(self)
-         if ~self.running && isa(self.process,'java.lang.Process')
-            % Remove timer here since the destructor isn't called correctly?
-            % Must be because the timer callback references the object...
-            % http://blogs.mathworks.com/loren/2013/07/23/deconstructing-destructors/
-            if strcmp(self.pollTimer.Running,'on')
-               stop(self.pollTimer);
+      function check(self,silent)
+         if nargin < 2
+            silent = false;
+         end
+         for i = 1:numel(self)
+            if ~self(i).running && isa(self(i).process,'java.lang.Process')
+               % Remove timer here since the destructor isn't called correctly?
+               % Must be because the timer callback references the object...
+               % http://blogs.mathworks.com/loren/2013/07/23/deconstructing-destructors/
+               if isvalid(self(i).pollTimer)
+                  if strcmp(self(i).pollTimer.Running,'on')
+                     stop(self(i).pollTimer);
+                  end
+               end
+               delete(self(i).pollTimer);
+               %self.pollTimer = [];
+               if ~silent
+                  fprintf('Process %s finished with exit value %g.\n',self(i).id,self(i).exitValue);
+               end
+            else
+               if ~silent
+                  fprintf('Process %s is still running.\n',self(i).id);
+               end
             end
-            delete(self.pollTimer);
-            self.pollTimer = [];
          end
       end
       
@@ -243,7 +264,7 @@ classdef processManager < handle
    
    methods(Static)
       function poll(event,string_arg,obj)
-         obj.check();
+         obj.check(true);
          obj.readStream(obj.stderr,obj.printStderr,obj.id);
          obj.readStream(obj.stdout,obj.printStdout,obj.id);
       end
