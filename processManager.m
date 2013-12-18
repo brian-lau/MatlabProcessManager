@@ -8,14 +8,17 @@
 %     
 %     >> system('dir &');
 %
-%     but using processManager allows you to start and stop processes, and
-%     you to peek and check on progress of running processes, while
-%     allowing you to continue working in the main Matlab process.
+%     but using processManager allows you to start and stop processes, peek
+%     and check on the progress of running processes, all the while allowing 
+%     you to continue working in the main Matlab process.
 %
+%     All inputs are passed in using name/value pairs. The name is a string
+%     followed by the value (described below).
 %     The only required input is the command.
-%     The optional inputs are all name/value pairs. The name is a string
-%     followed by the value (described below). The order of the pairs does
-%     not matter, nor does the case.
+%     The order of the pairs does not matter, nor does the case.
+%
+%     More information and can be found on GitHub:
+%     https://github.com/brian-lau/MatlabProcessManager/wiki
 %
 % INPUTS
 %     command      - string defining command to execute
@@ -33,6 +36,11 @@
 %                    not drained fast enough
 %                    If you don't want to see output, better to set
 %                    printStdout and printStderr false
+%
+% METHODS
+%     start        - start process(es)
+%     stop         - stop process(es)
+%     check        - check running process(es)
 %
 % EXAMPLES
 %     % 1) Running a simple command
@@ -56,19 +64,11 @@
 %     % ... if you want to hear back later,
 %     p(2).printStdout = true;
 %     p.stop();
-%
 % 
 %     $ Copyright (C) 2013 Brian Lau http://www.subcortex.net/ $
-
-%
-% TODO
-% occasionally, the polling timer does not get destroyed properly, and gets
-% left around, preventing us from reloading, eg., a changed processManager
-% classdef. To get around,
-% delete(timerfindall)
-%
-% envp not working?
-
+%     Released under the BSD license. The license and most recent version
+%     of the code can be found on GitHub:
+%     https://github.com/brian-lau/MatlabProcessManager
 
 classdef processManager < handle
    properties(GetAccess = public, SetAccess = public)
