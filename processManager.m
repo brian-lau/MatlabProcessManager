@@ -70,6 +70,11 @@
 %     of the code can be found on GitHub:
 %     https://github.com/brian-lau/MatlabProcessManager
 
+% TODO
+% store streams?
+% store timer names and create kill method for orphans?
+% cprintf for colored output for each process?
+
 classdef processManager < handle
    properties(GetAccess = public, SetAccess = public)
       id
@@ -79,6 +84,7 @@ classdef processManager < handle
 
       printStderr
       printStdout
+      wrap
       autoStart
 
       pollInterval
@@ -87,7 +93,7 @@ classdef processManager < handle
       running
       exitValue
    end
-   properties(GetAccess = public, SetAccess = private)
+   properties(GetAccess = private, SetAccess = private)
       process
       stdout
       stderr
@@ -126,6 +132,7 @@ classdef processManager < handle
          p.addParamValue('envp','',@iscell);
          p.addParamValue('printStdout',true,@islogical);
          p.addParamValue('printStderr',true,@islogical);
+         p.addParamValue('wrap',80,@(x) isnumeric(x) && (x>0));
          p.addParamValue('autoStart',true,@islogical);
          p.addParamValue('pollInterval',0.5,@(x) isnumeric(x) && (x>0));
          p.parse(varargin{:});
@@ -271,8 +278,8 @@ classdef processManager < handle
       function poll(event,string_arg,obj)
          obj.check(true);
          try
-            obj.readStream(obj.stderr,obj.printStderr,obj.id);
-            obj.readStream(obj.stdout,obj.printStdout,obj.id);
+            obj.readStream(obj.stderr,obj.printStderr,obj.id,obj.wrap);
+            obj.readStream(obj.stdout,obj.printStdout,obj.id,obj.wrap);
          catch err
             any(strfind(err.message,'process hasn''t exited'))
             if any(strfind(err.message,'java.io.IOException: Stream closed'))
@@ -285,7 +292,7 @@ classdef processManager < handle
          end
       end
       
-      function count = readStream(stream,printFlag,prefix)
+      function count = readStream(stream,printFlag,prefix,wrap)
          % This is potentially fragile since ready() only checks whether
          % there is an element in the buffer, not a complete line.
          % Therefore, readLine() can block if the process doesn't terminate
@@ -313,9 +320,9 @@ classdef processManager < handle
                   if ~isempty(c)
                      if exist('linewrap','file') == 2
                         if isempty(prefix)
-                           str = linewrap(c);
+                           str = linewrap(c,wrap);
                         else
-                           str = linewrap([prefix ': ' c]);
+                           str = linewrap([prefix ': ' c],wrap);
                         end
                         fprintf('%s\n',str{:});
                      else
