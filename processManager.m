@@ -71,7 +71,8 @@
 %     https://github.com/brian-lau/MatlabProcessManager
 
 % TODO
-% store streams?
+% store streams? maybe we need to buffer only last xxx
+% setters to validate public props...
 % store timer names and create kill method for orphans?
 % cprintf for colored output for each process?
 
@@ -85,9 +86,15 @@ classdef processManager < handle
       printStderr
       printStdout
       wrap
+      keepStderr
+      keepStdout
       autoStart
 
       pollInterval
+   end
+   properties(GetAccess = public, SetAccess = private)
+      stderr = {};
+      stdout = {};
    end
    properties(GetAccess = public, SetAccess = private, Dependent = true, Transient = true)
       running
@@ -95,8 +102,8 @@ classdef processManager < handle
    end
    properties(GetAccess = private, SetAccess = private)
       process
-      stdout
-      stderr
+      stderrBuffer
+      stdoutBuffer
       pollTimer
    end
    
@@ -132,6 +139,8 @@ classdef processManager < handle
          p.addParamValue('envp','',@iscell);
          p.addParamValue('printStdout',true,@islogical);
          p.addParamValue('printStderr',true,@islogical);
+         p.addParamValue('keepStdout',false,@islogical);
+         p.addParamValue('keepStderr',false,@islogical);
          p.addParamValue('wrap',80,@(x) isnumeric(x) && (x>0));
          p.addParamValue('autoStart',true,@islogical);
          p.addParamValue('pollInterval',0.5,@(x) isnumeric(x) && (x>0));
@@ -151,6 +160,9 @@ classdef processManager < handle
          end
          self.printStdout = p.Results.printStdout;
          self.printStderr = p.Results.printStderr;
+         self.wrap = p.Results.wrap;
+         self.keepStdout = p.Results.keepStdout;
+         self.keepStderr = p.Results.keepStderr;
          self.autoStart = p.Results.autoStart;
          self.pollInterval = p.Results.pollInterval;
                                   
@@ -171,12 +183,12 @@ classdef processManager < handle
             % http://www.mathworks.com/matlabcentral/newsreader/view_thread/308816
             
             % Process will block if streams not drained
-            self(i).stdout = java.io.BufferedReader(...
+            self(i).stdoutBuffer = java.io.BufferedReader(...
                java.io.InputStreamReader(...
                self(i).process.getInputStream() ...
                ) ...
                );
-            self(i).stderr = java.io.BufferedReader(...
+            self(i).stderrBuffer = java.io.BufferedReader(...
                java.io.InputStreamReader(...
                self(i).process.getErrorStream() ...
                ) ...
@@ -200,8 +212,8 @@ classdef processManager < handle
                fprintf('processManager uninstalling timer for process %s.\n',self(i).id)
             end
             if ~isempty(self(i).process)
-               self(i).stdout.close();
-               self(i).stderr.close();
+               self(i).stdoutBuffer.close();
+               self(i).stderrBuffer.close();
                self(i).process.destroy();
             end
             self(i).running; % This seems to force an update
@@ -261,8 +273,8 @@ classdef processManager < handle
       function delete(self)
          if ~isempty(self.process)
             self.process.destroy();
-            self.stdout.close();
-            self.stderr.close();
+            self.stdoutBuffer.close();
+            self.stderrBuffer.close();
          end
          if ~isempty(self.pollTimer)
             if isvalid(self.pollTimer)
@@ -278,8 +290,8 @@ classdef processManager < handle
       function poll(event,string_arg,obj)
          obj.check(true);
          try
-            obj.readStream(obj.stderr,obj.printStderr,obj.id,obj.wrap);
-            obj.readStream(obj.stdout,obj.printStdout,obj.id,obj.wrap);
+            stderr = obj.readStream(obj.stderrBuffer);
+            stdout = obj.readStream(obj.stdoutBuffer);
          catch err
             any(strfind(err.message,'process hasn''t exited'))
             if any(strfind(err.message,'java.io.IOException: Stream closed'))
@@ -290,9 +302,24 @@ classdef processManager < handle
                rethrow(err);
             end
          end
+
+         if obj.printStderr
+            stderr = obj.printStream(stderr,obj.id,obj.wrap);
+         end
+         if obj.printStdout
+            stdout = obj.printStream(stdout,obj.id,obj.wrap);
+         end
+         
+         if obj.keepStderr
+            obj.stderr = cat(1,obj.stderr,stderr);
+         end
+         if obj.keepStdout
+            obj.stdout = cat(1,obj.stdout,stdout);
+         end
+         
       end
       
-      function count = readStream(stream,printFlag,prefix,wrap)
+      function lines = readStream(stream)
          % This is potentially fragile since ready() only checks whether
          % there is an element in the buffer, not a complete line.
          % Therefore, readLine() can block if the process doesn't terminate
@@ -302,44 +329,48 @@ classdef processManager < handle
          % 1) Implementing own low level read() and readLine()
          % 2) perhaps java.nio non-blocking methods
          % 3) Custom java class for spawning threads to manage streams
-         if nargin < 3
-            prefix = '';
-         end
-         count = 1;
+         lines = {};
          while true
             if stream.ready()
                line = stream.readLine();
                if isnumeric(line) && isempty(line)
                   % java null is empty double in matlab
                   % http://www.mathworks.com/help/matlab/matlab_external/passing-data-to-a-java-method.html
-                  fprintf('\n');
                   break;
                end
-               if printFlag
-                  c = char(line);
-                  if ~isempty(c)
-                     if exist('linewrap','file') == 2
-                        if isempty(prefix)
-                           str = linewrap(c,wrap);
-                        else
-                           str = linewrap([prefix ': ' c],wrap);
-                        end
-                        fprintf('%s\n',str{:});
-                     else
-                        if isempty(prefix)
-                           str = c;
-                        else
-                           str = [prefix ': ' c];
-                        end
-                        fprintf('%s\n',str);
-                     end                        
-                  end
-               end
-               count = count + 1;
+               c = char(line);
+               lines = cat(1,lines,c);
             else
                break;
             end
          end
+      end
+      
+      function str = printStream(c,prefix,wrap)
+         if nargin < 2
+            prefix = '';
+         end
+         if nargin < 3
+            wrap = 80;
+         end
+         str = {};
+         for i = 1:length(c)
+            if exist('linewrap','file') == 2
+               if isempty(prefix)
+                  tempStr = linewrap(c{i},wrap);
+               else
+                  tempStr = linewrap([prefix ': ' c{i}],wrap);
+               end
+            else
+               if isempty(prefix)
+                  tempStr = c{i};
+               else
+                  tempStr = [prefix ': ' c{i}];
+               end
+            end
+            str = cat(1,str,tempStr);
+         end
+         fprintf('%s\n',str{:});
       end
       
       function [bool,exitValue] = isRunning(process)
