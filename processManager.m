@@ -29,11 +29,14 @@
 %     envp         - not working yet
 %     printStdout  - boolean to print stdout stream, default true
 %     printStderr  - boolean to print stderr stream, default true
+%     wrap         - number of columns for wrapping lines, default = 80
+%     keepStdout   - boolean to keep stdout stream, default false
+%     keepStderr   - boolean to keep stderr stream, default false
 %     autoStart    - boolean to start process immediately, default true
 %     pollInterval - double defining polling interval in sec, default 0.5
-%                    Take care with this variable, if set too long,
-%                    runs the risk of blocking Matlab when streams buffers
-%                    not drained fast enough
+%                    Take care with this variable, if set too long, there is
+%                    a risk of blocking Matlab when streams buffers not drained 
+%                    fast enough
 %                    If you don't want to see output, better to set
 %                    printStdout and printStderr false
 %
@@ -75,6 +78,13 @@
 % setters to validate public props...
 % store timer names and create kill method for orphans?
 % cprintf for colored output for each process?
+%
+% ISSUES
+% Polling is a terrible hack. Worse, it seems that when the process exits, the
+% io streams are closed. Since polling is relatively infrequent, this means that
+% io can be lost if the process exits in between polls.
+% Really seems like I need to wrap up a Java class with threading to deal with
+% the streams
 
 classdef processManager < handle
    properties(GetAccess = public, SetAccess = public)
@@ -134,7 +144,7 @@ classdef processManager < handle
          p.KeepUnmatched= false;
          p.FunctionName = 'processManager constructor';
          p.addParamValue('id','',@isstr);
-         p.addParamValue('command','',@(x) isstr(x) || isa(x,'java.lang.String[]'));
+         p.addParamValue('command','',@(x) isstr(x) || iscell(x) || isa(x,'java.lang.String[]'));
          p.addParamValue('workingDir','',@(x) exist(x,'dir')==7);
          p.addParamValue('envp','',@iscell);
          p.addParamValue('printStdout',true,@islogical);
@@ -143,11 +153,20 @@ classdef processManager < handle
          p.addParamValue('keepStderr',false,@islogical);
          p.addParamValue('wrap',80,@(x) isnumeric(x) && (x>0));
          p.addParamValue('autoStart',true,@islogical);
-         p.addParamValue('pollInterval',0.5,@(x) isnumeric(x) && (x>0));
+         p.addParamValue('pollInterval',0.05,@(x) isnumeric(x) && (x>0));
          p.parse(varargin{:});
          
          self.id = p.Results.id;
-         self.command = p.Results.command;
+         if iscell(p.Results.command)
+            n = length(p.Results.command);
+            command = javaArray('java.lang.String',n);
+            for i = 1:n
+               command(i) = java.lang.String(p.Results.command{i});
+            end
+            self.command = command;
+         else
+            self.command = p.Results.command;
+         end
          if isempty(p.Results.workingDir);
             self.workingDir = pwd;
          else
@@ -204,12 +223,15 @@ classdef processManager < handle
          end
       end
 
-      function stop(self)
+      function stop(self,silent)
+         if nargin < 2
+            silent = false;
+         end
          for i = 1:numel(self)
             if ~isempty(self(i).pollTimer) && isvalid(self(i).pollTimer)
                stop(self(i).pollTimer);
                delete(self(i).pollTimer);
-               fprintf('processManager uninstalling timer for process %s.\n',self(i).id)
+               %fprintf('processManager uninstalling timer for process %s.\n',self(i).id)
             end
             if ~isempty(self(i).process)
                self(i).stdoutBuffer.close();
@@ -217,7 +239,7 @@ classdef processManager < handle
                self(i).process.destroy();
             end
             self(i).running; % This seems to force an update
-            self(i).check();
+            self(i).check(silent);
          end
       end
 
@@ -270,6 +292,20 @@ classdef processManager < handle
          end
       end
       
+      function block(self,t)
+         % Avoid p.waitfor since it hangs with enough output, and
+         % unfortunately, Matlab's waitfor does not work?
+         % http://undocumentedmatlab.com/blog/waiting-for-asynchronous-events/
+         if nargin < 2
+            t = self.pollInterval;
+         end
+         while self.running
+            % Matlab pause() has a memory leak
+            % http://undocumentedmatlab.com/blog/pause-for-the-better/
+            java.lang.Thread.sleep(t*1000);
+         end
+      end
+      
       function delete(self)
          if ~isempty(self.process)
             self.process.destroy();
@@ -288,11 +324,12 @@ classdef processManager < handle
    
    methods(Static)
       function poll(event,string_arg,obj)
-         obj.check(true);
+         %obj.check(true);
          try
             stderr = obj.readStream(obj.stderrBuffer);
             stdout = obj.readStream(obj.stdoutBuffer);
          catch err
+            err.message
             any(strfind(err.message,'process hasn''t exited'))
             if any(strfind(err.message,'java.io.IOException: Stream closed'))
                % pass
@@ -316,7 +353,6 @@ classdef processManager < handle
          if obj.keepStdout
             obj.stdout = cat(1,obj.stdout,stdout);
          end
-         
       end
       
       function lines = readStream(stream)
