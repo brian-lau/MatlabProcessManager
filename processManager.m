@@ -77,8 +77,9 @@
 % store streams? maybe we need to buffer only last xxx
 % setters to validate public props...
 % store timer names and create kill method for orphans?
+% Generate unique names for each timer. check using timerfindall, storename
 % cprintf for colored output for each process?
-%
+
 % ISSUES
 % Polling is a terrible hack. Worse, it seems that when the process exits, the
 % io streams are closed. Since polling is relatively infrequent, this means that
@@ -315,7 +316,7 @@ classdef processManager < handle
          if ~isempty(self.pollTimer)
             if isvalid(self.pollTimer)
                stop(self.pollTimer);
-               delete(self.pollTimer);
+               %delete(self.pollTimer);
                fprintf('processManager uninstalling timer for process %s.\n',self.id)
             end
          end
@@ -324,7 +325,7 @@ classdef processManager < handle
    
    methods(Static)
       function poll(event,string_arg,obj)
-         %obj.check(true);
+         obj.check(true);
          try
             stderr = obj.readStream(obj.stderrBuffer);
             stdout = obj.readStream(obj.stdoutBuffer);
