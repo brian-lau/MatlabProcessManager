@@ -44,6 +44,7 @@
 %     start        - start process(es)
 %     stop         - stop process(es)
 %     check        - check running process(es)
+%     block        - block until done
 %
 % EXAMPLES
 %     % 1) Running a simple command
@@ -117,7 +118,9 @@ classdef processManager < handle
       stdoutBuffer
       pollTimer
    end
-   
+   events
+      exit
+   end
    methods
       %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       %% Constructor
@@ -281,6 +284,8 @@ classdef processManager < handle
                      stop(self(i).pollTimer);
                   end
                end
+               %keyboard
+               notify(self,'exit'); % Broadcast termination
                delete(self(i).pollTimer);
                if ~silent
                   fprintf('Process %s finished with exit value %g.\n',self(i).id,self(i).exitValue);
@@ -303,6 +308,7 @@ classdef processManager < handle
          while self.running
             % Matlab pause() has a memory leak
             % http://undocumentedmatlab.com/blog/pause-for-the-better/
+            % http://matlabideas.wordpress.com/2013/05/18/take-a-break-have-a-pause/
             java.lang.Thread.sleep(t*1000);
          end
       end
