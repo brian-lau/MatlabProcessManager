@@ -21,7 +21,12 @@
 %     https://github.com/brian-lau/MatlabProcessManager/wiki
 %
 % INPUTS
-%     command      - string defining command to execute
+%     command      - command to execute in separate process, can take the
+%                    form of
+%                    1) string defining complete command including
+%                    arguments
+%                    2) cell array of strings, parsing the command and each
+%                    argument into a separate cell array element
 %
 % OPTIONAL
 %     id           - string identifier for process, default ''
@@ -75,18 +80,10 @@
 %     https://github.com/brian-lau/MatlabProcessManager
 
 % TODO
-% store streams? maybe we need to buffer only last xxx
-% setters to validate public props...
+% If streams are stored maybe we need to buffer a finite number of lines
 % store timer names and create kill method for orphans?
 % Generate unique names for each timer. check using timerfindall, storename
 % cprintf for colored output for each process?
-
-% ISSUES
-% Polling is a terrible hack. Worse, it seems that when the process exits, the
-% io streams are closed. Since polling is relatively infrequent, this means that
-% io can be lost if the process exits in between polls.
-% Really seems like I need to wrap up a Java class with threading to deal with
-% the streams
 
 classdef processManager < handle
    properties(GetAccess = public, SetAccess = public)
@@ -112,11 +109,14 @@ classdef processManager < handle
       running
       exitValue
    end
-   properties(GetAccess = private, SetAccess = private)
+   properties(GetAccess = public, SetAccess = private, Hidden = true)
       process
-      stderrBuffer
-      stdoutBuffer
+      stderrReader
+      stdoutReader
       pollTimer
+   end
+   properties(GetAccess = public, SetAccess = protected)
+      version = '0.1.0';
    end
    events
       exit
@@ -133,6 +133,9 @@ classdef processManager < handle
          % envp         - not working yet
          % printStdout  - boolean to print stdout stream, default true
          % printStderr  - boolean to print stderr stream, default true
+         % wrap         - number of columns for wrapping lines, default = 80
+         % keepStdout   - boolean to keep stdout stream, default false
+         % keepStderr   - boolean to keep stderr stream, default false
          % autoStart    - boolean to start process immediately, default true
          % pollInterval - double defining polling interval in sec, default 0.5
          %                Take care with this variable, if set too long,
@@ -141,46 +144,24 @@ classdef processManager < handle
          %                If you don't want to see output, better to set 
          %                printStdout and printStderr false
          %
-         if nargin == 0
-            return;
-         end
          p = inputParser;
          p.KeepUnmatched= false;
          p.FunctionName = 'processManager constructor';
-         p.addParamValue('id','',@isstr);
-         p.addParamValue('command','',@(x) isstr(x) || iscell(x) || isa(x,'java.lang.String[]'));
-         p.addParamValue('workingDir','',@(x) exist(x,'dir')==7);
-         p.addParamValue('envp','',@iscell);
-         p.addParamValue('printStdout',true,@islogical);
-         p.addParamValue('printStderr',true,@islogical);
-         p.addParamValue('keepStdout',false,@islogical);
-         p.addParamValue('keepStderr',false,@islogical);
-         p.addParamValue('wrap',80,@(x) isnumeric(x) && (x>0));
-         p.addParamValue('autoStart',true,@islogical);
-         p.addParamValue('pollInterval',0.05,@(x) isnumeric(x) && (x>0));
+         p.addParamValue('id','',@(x) ischar(x) || isscalar(x));
+         p.addParamValue('command','',@(x) ischar(x) || iscell(x) || isa(x,'java.lang.String[]'));
+         p.addParamValue('workingDir','',@(x) ischar(x) && exist(x,'dir')==7);
+         p.addParamValue('envp','',@(x) ischar(x) || iscell(x) || isa(x,'java.lang.String[]'));
+         p.addParamValue('printStdout',true,@(x) isscalar(x) && islogical(x));
+         p.addParamValue('printStderr',true,@(x) isscalar(x) && islogical(x));
+         p.addParamValue('keepStdout',false,@(x) isscalar(x) && islogical(x));
+         p.addParamValue('keepStderr',false,@(x) isscalar(x) && islogical(x));
+         p.addParamValue('wrap',80,@(x) isscalar(x) && isnumeric(x) && (x>0));
+         p.addParamValue('autoStart',true,@(x) isscalar(x) && islogical(x));
+         p.addParamValue('pollInterval',0.05,@(x) isscalar(x) && isnumeric(x) && (x>0));
          p.parse(varargin{:});
          
          self.id = p.Results.id;
-         if iscell(p.Results.command)
-            n = length(p.Results.command);
-            command = javaArray('java.lang.String',n);
-            for i = 1:n
-               command(i) = java.lang.String(p.Results.command{i});
-            end
-            self.command = command;
-         else
-            self.command = p.Results.command;
-         end
-         if isempty(p.Results.workingDir);
-            self.workingDir = pwd;
-         else
-            self.workingDir = p.Results.workingDir;
-         end
-         if isempty(p.Results.envp)
-            self.envp = [];
-         else
-            self.envp = p.Results.envp;
-         end
+         self.workingDir = p.Results.workingDir;
          self.printStdout = p.Results.printStdout;
          self.printStderr = p.Results.printStderr;
          self.wrap = p.Results.wrap;
@@ -188,42 +169,101 @@ classdef processManager < handle
          self.keepStderr = p.Results.keepStderr;
          self.autoStart = p.Results.autoStart;
          self.pollInterval = p.Results.pollInterval;
-                                  
-         if self.autoStart
+         
+         self.command = p.Results.command;
+      end
+      
+      function set.id(self,id)
+         if ischar(id)
+            self.id = id;
+         elseif isscalar(id)
+            self.id = num2str(id);
+         else
+            error('processManager:id:InputFormat','id must be scalar.');
+         end
+      end
+      
+      function set.command(self,command)
+         if ~ischar(command) && ~iscell(command) && ~isa(command,'java.lang.String[]')
+            error('processManager:command:InputFormat',...
+               'command must be a string, cell array of strings, or java.lang.String array.');
+         end
+         if iscell(command)
+            % StringTokenizer is used to parse the command based on spaces
+            % this may not be what we want, there is an overload of exec()
+            % that allows passing in a String array.
+            % http://www.mathworks.com/matlabcentral/newsreader/view_thread/308816
+            n = length(command);
+            cmdArray = javaArray('java.lang.String',n);
+            for i = 1:n
+               cmdArray(i) = java.lang.String(command{i});
+            end
+            self.command = cmdArray;
+         else
+            self.command = command;
+         end
+         if self.autoStart && ~isempty(self.command)
             self.start();
          end
       end
       
+      function set.workingDir(self,workingDir)
+         if isempty(workingDir);
+            self.workingDir = pwd;
+         elseif exist(workingDir,'dir')==7
+            self.workingDir = workingDir;
+         end
+      end
+      
+      function set.envp(self,envp)
+         if isempty(envp);
+            self.envp = [];
+         elseif ischar(envp)
+            temp = javaArray('java.lang.String',1);
+            temp(1) = java.lang.String(envp);
+            self.envp = temp;
+         elseif iscell(envp)
+            n = length(envp);
+            cmdArray = javaArray('java.lang.String',n);
+            for i = 1:n
+               cmdArray(i) = java.lang.String(command{i});
+            end
+            self.envp = cmdArray;
+         end
+      end
+      
       function start(self)
+         runtime = java.lang.Runtime.getRuntime();
          for i = 1:numel(self)
-            runtime = java.lang.Runtime.getRuntime();
-            self(i).process = runtime.exec(self(i).command,...
-               self(i).envp,...
-               java.io.File(self(i).workingDir));
-            % StringTokenizer is used to parse the command based on spaces
-            % this may not be what we want, there is an overload of exec() 
-            % that allows passing in a String array.
-            % http://www.mathworks.com/matlabcentral/newsreader/view_thread/308816
-            
-            % Process will block if streams not drained
-            self(i).stdoutBuffer = java.io.BufferedReader(...
-               java.io.InputStreamReader(...
-               self(i).process.getInputStream() ...
-               ) ...
-               );
-            self(i).stderrBuffer = java.io.BufferedReader(...
-               java.io.InputStreamReader(...
-               self(i).process.getErrorStream() ...
-               ) ...
-               );
-            
-            % Install timer to periodically drain streams
-            % http://stackoverflow.com/questions/8595748/java-runtime-exec
-            self(i).pollTimer = timer('ExecutionMode','FixedRate',...
-               'Period',self(i).pollInterval,...
-               'Name',[self(i).id '-processManager-pollTimer'],...
-               'TimerFcn',{@processManager.poll self(i)});
-            start(self(i).pollTimer);
+            if isempty(self(i).command)
+               continue;
+            end
+            try
+               self(i).process = runtime.exec(self(i).command,...
+                  self(i).envp,...
+                  java.io.File(self(i).workingDir));
+
+               % Process will block if streams not drained
+               self(i).stdoutReader = java.io.BufferedReader(...
+                  java.io.InputStreamReader(self(i).process.getInputStream()));
+               self(i).stderrReader = java.io.BufferedReader(...
+                  java.io.InputStreamReader(self(i).process.getErrorStream()));
+
+               % Install timer to periodically drain streams
+               % http://stackoverflow.com/questions/8595748/java-runtime-exec
+               self(i).pollTimer = timer('ExecutionMode','FixedRate',...
+                  'Period',self(i).pollInterval,...
+                  'Name',[self(i).id '-processManager-pollTimer'],...
+                  'TimerFcn',{@processManager.poll self(i)});
+               start(self(i).pollTimer);
+            catch err
+               if any(strfind(err.message,'java.io.IOException: error=2, No such file or directory'))
+                  error('processManager:start:InputFormat',...
+                     'Looks like command doesn''t exist. Check spelling or path?');
+               else
+                  rethrow(err);
+               end
+            end
          end
       end
 
@@ -238,8 +278,8 @@ classdef processManager < handle
                %fprintf('processManager uninstalling timer for process %s.\n',self(i).id)
             end
             if ~isempty(self(i).process)
-               self(i).stdoutBuffer.close();
-               self(i).stderrBuffer.close();
+               self(i).stdoutReader.close();
+               self(i).stderrReader.close();
                self(i).process.destroy();
             end
             self(i).running; % This seems to force an update
@@ -262,13 +302,6 @@ classdef processManager < handle
             [~,exitValue] = self.isRunning(self.process);
          end
       end
-
-      % Does not work for object array...
-%       function set.printStdout(self,bool)
-%          for i = numel(self)
-%             self(i).printStdout = bool;
-%          end
-%       end
       
       function check(self,silent)
          if nargin < 2
@@ -284,15 +317,18 @@ classdef processManager < handle
                      stop(self(i).pollTimer);
                   end
                end
-               %keyboard
                notify(self,'exit'); % Broadcast termination
                delete(self(i).pollTimer);
                if ~silent
                   fprintf('Process %s finished with exit value %g.\n',self(i).id,self(i).exitValue);
                end
-            else
+            elseif self(i).running && isa(self(i).process,'java.lang.Process')
                if ~silent
                   fprintf('Process %s is still running.\n',self(i).id);
+               end
+            else
+               if ~silent
+                  fprintf('Process %s has not been started yet.\n',self(i).id);
                end
             end
          end
@@ -316,13 +352,13 @@ classdef processManager < handle
       function delete(self)
          if ~isempty(self.process)
             self.process.destroy();
-            self.stdoutBuffer.close();
-            self.stderrBuffer.close();
+            self.stdoutReader.close();
+            self.stderrReader.close();
          end
          if ~isempty(self.pollTimer)
             if isvalid(self.pollTimer)
                stop(self.pollTimer);
-               %delete(self.pollTimer);
+               delete(self.pollTimer);
                fprintf('processManager uninstalling timer for process %s.\n',self.id)
             end
          end
@@ -331,13 +367,11 @@ classdef processManager < handle
    
    methods(Static)
       function poll(event,string_arg,obj)
-         obj.check(true);
+         %obj.check(true);
          try
-            stderr = obj.readStream(obj.stderrBuffer);
-            stdout = obj.readStream(obj.stdoutBuffer);
+            stderr = obj.readStream(obj.stderrReader);
+            stdout = obj.readStream(obj.stdoutReader);
          catch err
-            err.message
-            any(strfind(err.message,'process hasn''t exited'))
             if any(strfind(err.message,'java.io.IOException: Stream closed'))
                % pass
                % delete timer?
@@ -360,6 +394,7 @@ classdef processManager < handle
          if obj.keepStdout
             obj.stdout = cat(1,obj.stdout,stdout);
          end
+         obj.check(true);
       end
       
       function lines = readStream(stream)
@@ -421,7 +456,7 @@ classdef processManager < handle
             exitValue = process.exitValue();
             bool = false;
          catch err
-            if any(strfind(err.message,'process hasn''t exited'))
+            if any(strfind(err.message,'java.lang.IllegalThreadStateException: process hasn''t exited'))
                bool = true;
                exitValue = NaN;
             else
