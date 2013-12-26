@@ -116,7 +116,7 @@ classdef processManager < handle
       pollTimer
    end
    properties(GetAccess = public, SetAccess = protected)
-      version = '0.1.0';
+      version = '0.1.1';
    end
    events
       exit
@@ -358,7 +358,6 @@ classdef processManager < handle
          if ~isempty(self.pollTimer)
             if isvalid(self.pollTimer)
                stop(self.pollTimer);
-               delete(self.pollTimer);
                fprintf('processManager uninstalling timer for process %s.\n',self.id)
             end
          end
@@ -367,7 +366,6 @@ classdef processManager < handle
    
    methods(Static)
       function poll(event,string_arg,obj)
-         %obj.check(true);
          try
             stderr = obj.readStream(obj.stderrReader);
             stdout = obj.readStream(obj.stdoutReader);
