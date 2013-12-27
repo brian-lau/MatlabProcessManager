@@ -80,10 +80,11 @@
 %     https://github.com/brian-lau/MatlabProcessManager
 
 % TODO
-% If streams are stored maybe we need to buffer a finite number of lines
-% store timer names and create kill method for orphans?
-% Generate unique names for each timer. check using timerfindall, storename
-% cprintf for colored output for each process?
+% o If streams are stored maybe we need to buffer a finite number of lines
+% o Generate unique names for each timer. check using timerfindall, storename
+% o cprintf for colored output for each process?
+% o delete() should just call stop(). redundant
+% x remove redundant validators from inputParser (ie, when setter exists)
 
 classdef processManager < handle
    properties(GetAccess = public, SetAccess = public)
@@ -147,10 +148,10 @@ classdef processManager < handle
          p = inputParser;
          p.KeepUnmatched= false;
          p.FunctionName = 'processManager constructor';
-         p.addParamValue('id','',@(x) ischar(x) || isscalar(x));
-         p.addParamValue('command','',@(x) ischar(x) || iscell(x) || isa(x,'java.lang.String[]'));
-         p.addParamValue('workingDir','',@(x) ischar(x) && exist(x,'dir')==7);
-         p.addParamValue('envp','',@(x) ischar(x) || iscell(x) || isa(x,'java.lang.String[]'));
+         p.addParamValue('id','');
+         p.addParamValue('command','');
+         p.addParamValue('workingDir','');
+         p.addParamValue('envp','');
          p.addParamValue('printStdout',true,@(x) isscalar(x) && islogical(x));
          p.addParamValue('printStderr',true,@(x) isscalar(x) && islogical(x));
          p.addParamValue('keepStdout',false,@(x) isscalar(x) && islogical(x));
@@ -184,10 +185,6 @@ classdef processManager < handle
       end
       
       function set.command(self,command)
-         if ~ischar(command) && ~iscell(command) && ~isa(command,'java.lang.String[]')
-            error('processManager:command:InputFormat',...
-               'command must be a string, cell array of strings, or java.lang.String array.');
-         end
          if iscell(command)
             % StringTokenizer is used to parse the command based on spaces
             % this may not be what we want, there is an overload of exec()
@@ -199,19 +196,30 @@ classdef processManager < handle
                cmdArray(i) = java.lang.String(command{i});
             end
             self.command = cmdArray;
-         else
+         elseif ischar(command) || isa(command,'java.lang.String[]')
             self.command = command;
+         else
+            error('processManager:command:InputFormat',...
+               'command must be a string, cell array of strings, or java.lang.String array.');
          end
+         
          if self.autoStart && ~isempty(self.command)
             self.start();
          end
       end
       
       function set.workingDir(self,workingDir)
+         if ~ischar(workingDir)
+            error('processManager:workingDir:InputFormat',...
+               'command must be a string specifying a directory.');
+         end
          if isempty(workingDir);
             self.workingDir = pwd;
-         elseif exist(workingDir,'dir')==7
+         elseif exist(workingDir,'dir') == 7
             self.workingDir = workingDir;
+         else
+            error('processManager:workingDir:InputFormat',...
+               'Not a valid directory name.');
          end
       end
       
@@ -229,6 +237,9 @@ classdef processManager < handle
                cmdArray(i) = java.lang.String(command{i});
             end
             self.envp = cmdArray;
+         else
+            error('processManager:envp:InputFormat',...
+               'command must be a string, cell array of strings, or java.lang.String array.');
          end
       end
       

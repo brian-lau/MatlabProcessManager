@@ -37,10 +37,10 @@ assertEqual(p.pollInterval,1);
 
 function testBadArgs
 f = @() processManager('id',{'should' 'not' 'work'});
-assertExceptionThrown(f, 'MATLAB:InputParser:ArgumentFailedValidation');
+assertExceptionThrown(f,'processManager:id:InputFormat');
 
 f = @() processManager('command',1);
-assertExceptionThrown(f, 'MATLAB:InputParser:ArgumentFailedValidation');
+assertExceptionThrown(f, 'processManager:command:InputFormat');
 f = @() processManager('command',{1 2});
 assertExceptionThrown(f, 'processManager:start:InputFormat');
 f = @() processManager('command','thiscommanddoesnotexist');
@@ -49,9 +49,9 @@ f = @() processManager('command',{'this' 'command' 'does' 'not' 'exist'});
 assertExceptionThrown(f, 'processManager:start:InputFormat');
 
 f = @() processManager('workingDir',1);
-assertExceptionThrown(f, 'MATLAB:InputParser:ArgumentFailedValidation');
+assertExceptionThrown(f, 'processManager:workingDir:InputFormat');
 f = @() processManager('workingDir','/this/directory/does/not/exist/');
-assertExceptionThrown(f, 'MATLAB:InputParser:ArgumentFailedValidation');
+assertExceptionThrown(f, 'processManager:workingDir:InputFormat');
 
 f = @() processManager('printStderr',1);
 assertExceptionThrown(f, 'MATLAB:InputParser:ArgumentFailedValidation');
