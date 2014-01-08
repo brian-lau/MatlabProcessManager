@@ -84,10 +84,9 @@
 % o Generate unique names for each timer. check using timerfindall, storename
 % o cprintf for colored output for each process?
 % o delete() should just call stop(). redundant
-% x remove redundant validators from inputParser (ie, when setter exists)
 
 classdef processManager < handle
-   properties(GetAccess = public, SetAccess = public)
+   properties(SetAccess = public)
       id
       command
       envp
@@ -102,26 +101,27 @@ classdef processManager < handle
 
       pollInterval
    end
-   properties(GetAccess = public, SetAccess = private)
+   properties(SetAccess = private)
       stderr = {};
       stdout = {};
    end
-   properties(GetAccess = public, SetAccess = private, Dependent = true, Transient = true)
+   properties(SetAccess = private, Dependent = true)
       running
       exitValue
    end
-   properties(GetAccess = public, SetAccess = private, Hidden = true)
+   properties(SetAccess = private, Hidden = true)
       process
       stderrReader
       stdoutReader
       pollTimer
    end
-   properties(GetAccess = public, SetAccess = protected)
+   properties(SetAccess = protected)
       version = '0.1.2';
    end
    events
       exit
    end
+   
    methods
       %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       %% Constructor
