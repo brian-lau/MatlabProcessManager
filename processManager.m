@@ -117,7 +117,7 @@ classdef processManager < handle
       pollTimer
    end
    properties(GetAccess = public, SetAccess = protected)
-      version = '0.1.1';
+      version = '0.1.2';
    end
    events
       exit
@@ -327,8 +327,9 @@ classdef processManager < handle
                   if strcmp(self(i).pollTimer.Running,'on')
                      stop(self(i).pollTimer);
                   end
+                  %fprintf('%s notifying, valid = %g\n',self(i).id,isvalid(self(i).pollTimer));
+                  notify(self,'exit'); % Broadcast termination
                end
-               notify(self,'exit'); % Broadcast termination
                delete(self(i).pollTimer);
                if ~silent
                   fprintf('Process %s finished with exit value %g.\n',self(i).id,self(i).exitValue);
@@ -352,12 +353,14 @@ classdef processManager < handle
          if nargin < 2
             t = self.pollInterval;
          end
-         while self.running
+         while any([self.running])
             % Matlab pause() has a memory leak
             % http://undocumentedmatlab.com/blog/pause-for-the-better/
             % http://matlabideas.wordpress.com/2013/05/18/take-a-break-have-a-pause/
             java.lang.Thread.sleep(t*1000);
          end
+         % Make sure notification is issued
+         self.check(true);
       end
       
       function delete(self)
