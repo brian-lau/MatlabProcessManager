@@ -53,7 +53,7 @@
 %
 % EXAMPLES
 %     % 1) Running a simple command
-%     p = processManager('command','ls -la');
+%     p = processManager('command','nslookup www.google.com');
 %
 %     % 2) Command with ongoing output
 %     p = processManager('command','ping www.google.com');
@@ -83,7 +83,8 @@
 % o If streams are stored maybe we need to buffer a finite number of lines
 % o Generate unique names for each timer. check using timerfindall, storename
 % o cprintf for colored output for each process?
-% o delete() should just call stop(). redundant
+% o timers have a wait() method. Use this for blocking?
+%   http://www.mathworks.com/help/matlab/ref/timer.wait.html
 
 classdef processManager < handle
    properties(SetAccess = public)
@@ -99,6 +100,7 @@ classdef processManager < handle
       keepStdout
       autoStart
 
+      verbose
       pollInterval
    end
    properties(SetAccess = private)
@@ -116,7 +118,7 @@ classdef processManager < handle
       pollTimer
    end
    properties(SetAccess = protected)
-      version = '0.1.2';
+      version = '0.2.0';
    end
    events
       exit
@@ -138,6 +140,7 @@ classdef processManager < handle
          % keepStdout   - boolean to keep stdout stream, default false
          % keepStderr   - boolean to keep stderr stream, default false
          % autoStart    - boolean to start process immediately, default true
+         % verbose      - boolean to print processManager info, default false
          % pollInterval - double defining polling interval in sec, default 0.5
          %                Take care with this variable, if set too long,
          %                runs the risk of blocking Matlab when streams buffers
@@ -158,6 +161,7 @@ classdef processManager < handle
          p.addParamValue('keepStderr',false,@(x) isscalar(x) && islogical(x));
          p.addParamValue('wrap',80,@(x) isscalar(x) && isnumeric(x) && (x>0));
          p.addParamValue('autoStart',true,@(x) isscalar(x) && islogical(x));
+         p.addParamValue('verbose',false,@(x) isscalar(x) && islogical(x))
          p.addParamValue('pollInterval',0.05,@(x) isscalar(x) && isnumeric(x) && (x>0));
          p.parse(varargin{:});
          
@@ -169,6 +173,7 @@ classdef processManager < handle
          self.keepStdout = p.Results.keepStdout;
          self.keepStderr = p.Results.keepStderr;
          self.autoStart = p.Results.autoStart;
+         self.verbose = p.Results.verbose;
          self.pollInterval = p.Results.pollInterval;
          
          self.command = p.Results.command;
@@ -234,7 +239,7 @@ classdef processManager < handle
             n = length(envp);
             cmdArray = javaArray('java.lang.String',n);
             for i = 1:n
-               cmdArray(i) = java.lang.String(command{i});
+               cmdArray(i) = java.lang.String(envp{i});
             end
             self.envp = cmdArray;
          else
@@ -261,10 +266,14 @@ classdef processManager < handle
                   java.io.InputStreamReader(self(i).process.getErrorStream()));
 
                % Install timer to periodically drain streams
-               % http://stackoverflow.com/questions/8595748/java-runtime-exec
-               self(i).pollTimer = timer('ExecutionMode','FixedRate',...
+               % http://stackoverflow.com/questions/8595748/java-runtime-exec               
+               self(i).pollTimer = timer(...
+                  'ExecutionMode','FixedRate',...
+                  'BusyMode','queue',...
                   'Period',self(i).pollInterval,...
                   'Name',[self(i).id '-processManager-pollTimer'],...
+                  'StartFcn',{@processManager.pollTimerStart self(i).id self(i).verbose},...
+                  'StopFcn',{@processManager.pollTimerStop self(i).id self(i).verbose},...
                   'TimerFcn',{@processManager.poll self(i)});
                start(self(i).pollTimer);
             catch err
@@ -285,8 +294,6 @@ classdef processManager < handle
          for i = 1:numel(self)
             if ~isempty(self(i).pollTimer) && isvalid(self(i).pollTimer)
                stop(self(i).pollTimer);
-               delete(self(i).pollTimer);
-               %fprintf('processManager uninstalling timer for process %s.\n',self(i).id)
             end
             if ~isempty(self(i).process)
                self(i).stdoutReader.close();
@@ -327,10 +334,11 @@ classdef processManager < handle
                   if strcmp(self(i).pollTimer.Running,'on')
                      stop(self(i).pollTimer);
                   end
-                  %fprintf('%s notifying, valid = %g\n',self(i).id,isvalid(self(i).pollTimer));
-                  notify(self,'exit'); % Broadcast termination
+                  if self(i).verbose
+                     fprintf('Process %s notifying, valid = %g\n',self(i).id,isvalid(self(i).pollTimer));
+                  end
+                  notify(self(i),'exit'); % Broadcast termination
                end
-               delete(self(i).pollTimer);
                if ~silent
                   fprintf('Process %s finished with exit value %g.\n',self(i).id,self(i).exitValue);
                end
@@ -372,14 +380,26 @@ classdef processManager < handle
          if ~isempty(self.pollTimer)
             if isvalid(self.pollTimer)
                stop(self.pollTimer);
-               fprintf('processManager uninstalling timer for process %s.\n',self.id)
             end
          end
       end
    end
    
    methods(Static)
-      function poll(event,string_arg,obj)
+      function pollTimerStart(t,e,id,verbose)
+         if verbose
+            fprintf('processManager starting timer for process %s.\n',id)
+         end
+      end
+      
+      function pollTimerStop(t,e,id,verbose)
+         if verbose
+            fprintf('processManager stopped, uninstalling timer for process %s.\n',id)
+         end
+         delete(t);
+      end
+      
+      function poll(t,e,obj)
          try
             stderr = obj.readStream(obj.stderrReader);
             stdout = obj.readStream(obj.stdoutReader);
