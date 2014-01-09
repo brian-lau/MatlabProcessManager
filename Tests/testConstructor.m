@@ -21,6 +21,7 @@ p = processManager('id',999,...
                    'keepStderr',true,...
                    'wrap',99,...
                    'autoStart',false,...
+                   'verbose',true,...
                    'pollInterval',1 ...
                    );
 assertEqual(p.id,'999');
@@ -33,6 +34,7 @@ assertEqual(p.keepStdout,true);
 assertEqual(p.keepStderr,true);
 assertEqual(p.wrap,99);
 assertEqual(p.autoStart,false);
+assertEqual(p.verbose,true);
 assertEqual(p.pollInterval,1);
 
 function testBadArgs
@@ -91,6 +93,13 @@ assertExceptionThrown(f, 'MATLAB:InputParser:ArgumentFailedValidation');
 f = @() processManager('autoStart','t');
 assertExceptionThrown(f, 'MATLAB:InputParser:ArgumentFailedValidation');
 f = @() processManager('autoStart',{0});
+assertExceptionThrown(f, 'MATLAB:InputParser:ArgumentFailedValidation');
+
+f = @() processManager('verbose',0);
+assertExceptionThrown(f, 'MATLAB:InputParser:ArgumentFailedValidation');
+f = @() processManager('verbose','true');
+assertExceptionThrown(f, 'MATLAB:InputParser:ArgumentFailedValidation');
+f = @() processManager('verbose',[true true]);
 assertExceptionThrown(f, 'MATLAB:InputParser:ArgumentFailedValidation');
 
 f = @() processManager('pollInterval',0);
