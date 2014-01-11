@@ -37,6 +37,7 @@
 %     wrap         - number of columns for wrapping lines, default = 80
 %     keepStdout   - boolean to keep stdout stream, default false
 %     keepStderr   - boolean to keep stderr stream, default false
+%     verbose      - boolean to print processManager info, default false
 %     autoStart    - boolean to start process immediately, default true
 %     pollInterval - double defining polling interval in sec, default 0.5
 %                    Take care with this variable, if set too long, there is
@@ -74,7 +75,7 @@
 %     p(2).printStdout = true;
 %     p.stop();
 % 
-%     $ Copyright (C) 2013 Brian Lau http://www.subcortex.net/ $
+%     $ Copyright (C) 2014 Brian Lau http://www.subcortex.net/ $
 %     Released under the BSD license. The license and most recent version
 %     of the code can be found on GitHub:
 %     https://github.com/brian-lau/MatlabProcessManager
@@ -85,6 +86,8 @@
 % o cprintf for colored output for each process?
 % o timers have a wait() method. Use this for blocking?
 %   http://www.mathworks.com/help/matlab/ref/timer.wait.html
+%   looks like it won't work for periodic timer
+%   https://stackoverflow.com/questions/18359996/how-to-make-a-matlab-function-wait-until-a-timer-stops-running
 
 classdef processManager < handle
    properties(SetAccess = public)
@@ -118,7 +121,7 @@ classdef processManager < handle
       pollTimer
    end
    properties(SetAccess = protected)
-      version = '0.2.0';
+      version = '0.3.0';
    end
    events
       exit
@@ -155,27 +158,28 @@ classdef processManager < handle
          p.addParamValue('command','');
          p.addParamValue('workingDir','');
          p.addParamValue('envp','');
-         p.addParamValue('printStdout',true,@(x) isscalar(x) && islogical(x));
-         p.addParamValue('printStderr',true,@(x) isscalar(x) && islogical(x));
-         p.addParamValue('keepStdout',false,@(x) isscalar(x) && islogical(x));
-         p.addParamValue('keepStderr',false,@(x) isscalar(x) && islogical(x));
-         p.addParamValue('wrap',80,@(x) isscalar(x) && isnumeric(x) && (x>0));
-         p.addParamValue('autoStart',true,@(x) isscalar(x) && islogical(x));
-         p.addParamValue('verbose',false,@(x) isscalar(x) && islogical(x))
-         p.addParamValue('pollInterval',0.05,@(x) isscalar(x) && isnumeric(x) && (x>0));
+         p.addParamValue('printStdout',true);
+         p.addParamValue('printStderr',true);
+         p.addParamValue('keepStdout',false);
+         p.addParamValue('keepStderr',false);
+         p.addParamValue('wrap',80);
+         p.addParamValue('autoStart',true);
+         p.addParamValue('verbose',false);
+         p.addParamValue('pollInterval',0.05);
          p.parse(varargin{:});
          
          self.id = p.Results.id;
          self.workingDir = p.Results.workingDir;
+         self.envp = p.Results.envp;
          self.printStdout = p.Results.printStdout;
          self.printStderr = p.Results.printStderr;
-         self.wrap = p.Results.wrap;
          self.keepStdout = p.Results.keepStdout;
          self.keepStderr = p.Results.keepStderr;
+         self.wrap = p.Results.wrap;
          self.autoStart = p.Results.autoStart;
          self.verbose = p.Results.verbose;
          self.pollInterval = p.Results.pollInterval;
-         
+
          self.command = p.Results.command;
       end
       
@@ -248,6 +252,78 @@ classdef processManager < handle
          end
       end
       
+      function set.printStdout(self,bool)
+         if isscalar(bool) && islogical(bool)
+            self.printStdout = bool;
+         else
+            error('processManager:printStdout:InputFormat',...
+               'Input must be a scalar logical');
+         end
+      end
+      
+      function set.printStderr(self,bool)
+         if isscalar(bool) && islogical(bool)
+            self.printStderr = bool;
+         else
+            error('processManager:printStderr:InputFormat',...
+               'Input must be a scalar logical');
+         end
+      end
+      
+      function set.keepStdout(self,bool)
+         if isscalar(bool) && islogical(bool)
+            self.keepStdout = bool;
+         else
+            error('processManager:keepStdout:InputFormat',...
+               'Input must be a scalar logical');
+         end
+      end
+      
+      function set.keepStderr(self,bool)
+         if isscalar(bool) && islogical(bool)
+            self.keepStderr = bool;
+         else
+            error('processManager:keepStderr:InputFormat',...
+               'Input must be a scalar logical');
+         end
+      end
+         
+      function set.wrap(self,x)
+         if isscalar(x) && isnumeric(x) && (x>0)
+            self.wrap = max(1,round(x));
+         else
+            error('processManager:wrap:InputFormat',...
+               'Input must be a scalar > 0');
+         end
+      end
+      
+      function set.autoStart(self,bool)
+         if isscalar(bool) && islogical(bool)
+            self.autoStart = bool;
+         else
+            error('processManager:autoStart:InputFormat',...
+               'Input must be a scalar logical');
+         end
+      end
+      
+      function set.verbose(self,bool)
+         if isscalar(bool) && islogical(bool)
+            self.verbose = bool;
+         else
+            error('processManager:verbose:InputFormat',...
+               'Input must be a scalar logical');
+         end
+      end
+      
+      function set.pollInterval(self,x)
+         if isscalar(x) && isnumeric(x) && (x>0)
+            self.pollInterval = x;
+         else
+            error('processManager:pollInterval:InputFormat',...
+               'Input must be a scalar > 0');
+         end
+      end
+
       function start(self)
          runtime = java.lang.Runtime.getRuntime();
          for i = 1:numel(self)
