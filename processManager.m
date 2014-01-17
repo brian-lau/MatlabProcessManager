@@ -116,15 +116,13 @@ classdef processManager < handle
    end
    properties(SetAccess = private, Hidden = true)
       process
+      state
       stderrReader
       stdoutReader
       pollTimer
    end
    properties(SetAccess = protected)
-      version = '0.3.0';
-   end
-   events
-      exit
+      version = '0.4.0';
    end
    
    methods
@@ -180,6 +178,8 @@ classdef processManager < handle
          self.verbose = p.Results.verbose;
          self.pollInterval = p.Results.pollInterval;
 
+         self.state = processState();
+         
          self.command = p.Results.command;
       end
       
@@ -255,6 +255,7 @@ classdef processManager < handle
       function set.printStdout(self,bool)
          if isscalar(bool) && islogical(bool)
             self.printStdout = bool;
+            self.updatePollData('printStdout',bool);
          else
             error('processManager:printStdout:InputFormat',...
                'Input must be a scalar logical');
@@ -264,6 +265,7 @@ classdef processManager < handle
       function set.printStderr(self,bool)
          if isscalar(bool) && islogical(bool)
             self.printStderr = bool;
+            self.updatePollData('printStderr',bool);
          else
             error('processManager:printStderr:InputFormat',...
                'Input must be a scalar logical');
@@ -273,6 +275,7 @@ classdef processManager < handle
       function set.keepStdout(self,bool)
          if isscalar(bool) && islogical(bool)
             self.keepStdout = bool;
+            self.updatePollData('keepStdout',bool);
          else
             error('processManager:keepStdout:InputFormat',...
                'Input must be a scalar logical');
@@ -282,15 +285,33 @@ classdef processManager < handle
       function set.keepStderr(self,bool)
          if isscalar(bool) && islogical(bool)
             self.keepStderr = bool;
+            self.updatePollData('keepStderr',bool);
          else
             error('processManager:keepStderr:InputFormat',...
                'Input must be a scalar logical');
          end
       end
-         
+      
+      function stderr = get.stderr(self)
+         if ~isempty(self.state)
+            stderr = self.state.stderr;
+         else
+            stderr = {};
+         end
+      end
+      
+      function stdout = get.stdout(self)
+         if ~isempty(self.state)
+            stdout = self.state.stdout;
+         else
+            stdout = {};
+         end
+      end
+      
       function set.wrap(self,x)
          if isscalar(x) && isnumeric(x) && (x>0)
             self.wrap = max(1,round(x));
+            self.updatePollData('wrap',self.wrap);
          else
             error('processManager:wrap:InputFormat',...
                'Input must be a scalar > 0');
@@ -309,6 +330,7 @@ classdef processManager < handle
       function set.verbose(self,bool)
          if isscalar(bool) && islogical(bool)
             self.verbose = bool;
+            self.updatePollData('verbose',bool);
          else
             error('processManager:verbose:InputFormat',...
                'Input must be a scalar logical');
@@ -321,6 +343,16 @@ classdef processManager < handle
          else
             error('processManager:pollInterval:InputFormat',...
                'Input must be a scalar > 0');
+         end
+      end
+      
+      function updatePollData(self,name,arg)
+         for i = 1:numel(self)
+            if ~isempty(self(i).pollTimer) && isvalid(self(i).pollTimer)
+               dat = get(self.pollTimer,'UserData');
+               dat.(name) = arg;
+               set(self.pollTimer,'UserData',dat);
+            end
          end
       end
 
@@ -348,9 +380,26 @@ classdef processManager < handle
                   'BusyMode','queue',...
                   'Period',self(i).pollInterval,...
                   'Name',[self(i).id '-processManager-pollTimer'],...
-                  'StartFcn',{@processManager.pollTimerStart self(i).id self(i).verbose},...
-                  'StopFcn',{@processManager.pollTimerStop self(i).id self(i).verbose},...
-                  'TimerFcn',{@processManager.poll self(i)});
+                  'StartFcn',@processManager.pollTimerStart,...
+                  'StopFcn',@processManager.pollTimerStop,...
+                  'TimerFcn',@processManager.poll);
+
+               % Load data for the timer to avoid self reference
+               pollData.verbose = self(i).verbose;
+               pollData.printStderr = self(i).printStderr;
+               pollData.printStdout = self(i).printStdout;
+               pollData.wrap = self(i).wrap;
+               pollData.stderr = self(i).stderr;
+               pollData.stdout = self(i).stdout;
+               pollData.keepStderr = self(i).keepStderr;
+               pollData.keepStdout = self(i).keepStdout;
+               pollData.stderrReader = self(i).stderrReader;
+               pollData.stdoutReader = self(i).stdoutReader;
+               pollData.process = self(i).process;
+               pollData.state = self(i).state;
+               pollData.state.id = self(i).id;
+               set(self(i).pollTimer,'UserData',pollData);
+               
                start(self(i).pollTimer);
             catch err
                if any(strfind(err.message,'java.io.IOException: error=2, No such file or directory'))
@@ -363,21 +412,18 @@ classdef processManager < handle
          end
       end
 
-      function stop(self,silent)
-         if nargin < 2
-            silent = false;
-         end
+      function stop(self)
          for i = 1:numel(self)
-            if ~isempty(self(i).pollTimer) && isvalid(self(i).pollTimer)
-               stop(self(i).pollTimer);
-            end
             if ~isempty(self(i).process)
+               self(i).process.destroy();
                self(i).stdoutReader.close();
                self(i).stderrReader.close();
-               self(i).process.destroy();
             end
-            self(i).running; % This seems to force an update
-            self(i).check(silent);
+%             if ~isempty(self(i).pollTimer)
+%                if isvalid(self(i).pollTimer)
+%                   stop(self(i).pollTimer);
+%                end
+%             end
          end
       end
 
@@ -397,35 +443,14 @@ classdef processManager < handle
          end
       end
       
-      function check(self,silent)
-         if nargin < 2
-            silent = false;
-         end
+      function check(self)
          for i = 1:numel(self)
             if ~self(i).running && isa(self(i).process,'java.lang.Process')
-               % Remove timer here since the destructor isn't called correctly?
-               % Must be because the timer callback references the object...
-               % http://blogs.mathworks.com/loren/2013/07/23/deconstructing-destructors/
-               if ~isempty(self(i).pollTimer) && isvalid(self(i).pollTimer)
-                  if strcmp(self(i).pollTimer.Running,'on')
-                     stop(self(i).pollTimer);
-                  end
-                  if self(i).verbose
-                     fprintf('Process %s notifying, valid = %g\n',self(i).id,isvalid(self(i).pollTimer));
-                  end
-                  notify(self(i),'exit'); % Broadcast termination
-               end
-               if ~silent
-                  fprintf('Process %s finished with exit value %g.\n',self(i).id,self(i).exitValue);
-               end
+               fprintf('Process %s finished with exit value %g.\n',self(i).id,self(i).exitValue);
             elseif self(i).running && isa(self(i).process,'java.lang.Process')
-               if ~silent
-                  fprintf('Process %s is still running.\n',self(i).id);
-               end
+               fprintf('Process %s is still running.\n',self(i).id);
             else
-               if ~silent
-                  fprintf('Process %s has not been started yet.\n',self(i).id);
-               end
+               fprintf('Process %s has not been started yet.\n',self(i).id);
             end
          end
       end
@@ -443,8 +468,12 @@ classdef processManager < handle
             % http://matlabideas.wordpress.com/2013/05/18/take-a-break-have-a-pause/
             java.lang.Thread.sleep(t*1000);
          end
-         % Make sure notification is issued
-         self.check(true);
+         self.stop();
+%          if ~isempty(self.pollTimer)
+%             if isvalid(self.pollTimer)
+%                self.pollTimer
+%             end
+%          end
       end
       
       function delete(self)
@@ -458,51 +487,69 @@ classdef processManager < handle
                stop(self.pollTimer);
             end
          end
+         if self.verbose
+            fprintf('processManager cleaned up.\n');
+         end
       end
    end
    
    methods(Static)
-      function pollTimerStart(t,e,id,verbose)
-         if verbose
-            fprintf('processManager starting timer for process %s.\n',id)
+      function pollTimerStart(t,e)
+         pollData = get(t,'UserData');
+         if pollData.verbose
+            fprintf('processManager starting timer for process %s.\n',pollData.state.id)
          end
       end
       
-      function pollTimerStop(t,e,id,verbose)
-         if verbose
-            fprintf('processManager stopped, uninstalling timer for process %s.\n',id)
+      function pollTimerStop(t,e)
+         pollData = get(t,'UserData');
+         if pollData.verbose
+            fprintf('processManager stopped, uninstalling timer for process %s.\n',pollData.state.id)
          end
+         % Update pollData
+         [running,exitValue] = processManager.isRunning(pollData.process);
+         pollData.state.running = running;
+         pollData.state.exitValue = exitValue;
+         set(t,'UserData',[]);
          delete(t);
       end
       
-      function poll(t,e,obj)
+      function poll(t,e)
+         pollData = get(t,'UserData');
          try
-            stderr = obj.readStream(obj.stderrReader);
-            stdout = obj.readStream(obj.stdoutReader);
+            stderr = processManager.readStream(pollData.stderrReader);
+            stdout = processManager.readStream(pollData.stdoutReader);
          catch err
             if any(strfind(err.message,'java.io.IOException: Stream closed'))
-               % pass
-               % delete timer?
-               fprintf('projectManager timer is polling a closed stream!\n');
+               % pass, this can happen when processManager object is
+               % stopped or cleared, and should be harmlessgit 
+               if pollData.verbose
+                  fprintf('projectManager timer is polling a closed stream!\n');
+               end
             else
                rethrow(err);
             end
          end
 
-         if obj.printStderr
-            stderr = obj.printStream(stderr,obj.id,obj.wrap);
+         if pollData.printStderr && exist('stderr','var')
+            stderr = processManager.printStream(stderr,pollData.state.id,pollData.wrap);
          end
-         if obj.printStdout
-            stdout = obj.printStream(stdout,obj.id,obj.wrap);
+         if pollData.printStdout && exist('stdout','var')
+            stdout = processManager.printStream(stdout,pollData.state.id,pollData.wrap);
          end
          
-         if obj.keepStderr
-            obj.stderr = cat(1,obj.stderr,stderr);
+         if pollData.keepStderr && exist('stderr','var')
+            pollData.state.updateStderr(stderr);
          end
-         if obj.keepStdout
-            obj.stdout = cat(1,obj.stdout,stdout);
+         if pollData.keepStdout && exist('stdout','var')
+            pollData.state.updateStdout(stdout);
          end
-         obj.check(true);
+         
+         % Run timer StopFcn callback if process is done
+         running = processManager.isRunning(pollData.process);
+         if ~running
+            stop(t);
+         end
       end
       
       function lines = readStream(stream)
@@ -572,6 +619,5 @@ classdef processManager < handle
             end
          end
       end
-      
    end
 end
