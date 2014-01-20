@@ -1,3 +1,7 @@
+% PROCESSSTATE - Utility class for processManager
+% 
+% Useful for sending notifications based on exitValue of process.
+%
 classdef processState < handle
    properties
       id

@@ -116,7 +116,7 @@ classdef processManager < handle
    end
    properties(SetAccess = private, Hidden = true)
       process
-      state
+      state % processState() object
       stderrReader
       stdoutReader
       pollTimer
@@ -419,11 +419,6 @@ classdef processManager < handle
                self(i).stdoutReader.close();
                self(i).stderrReader.close();
             end
-%             if ~isempty(self(i).pollTimer)
-%                if isvalid(self(i).pollTimer)
-%                   stop(self(i).pollTimer);
-%                end
-%             end
          end
       end
 
@@ -469,11 +464,6 @@ classdef processManager < handle
             java.lang.Thread.sleep(t*1000);
          end
          self.stop();
-%          if ~isempty(self.pollTimer)
-%             if isvalid(self.pollTimer)
-%                self.pollTimer
-%             end
-%          end
       end
       
       function delete(self)
