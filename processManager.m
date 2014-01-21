@@ -122,7 +122,7 @@ classdef processManager < handle
       pollTimer
    end
    properties(SetAccess = protected)
-      version = '0.4.0';
+      version = '0.4.1';
    end
    
    methods
@@ -601,7 +601,10 @@ classdef processManager < handle
             exitValue = process.exitValue();
             bool = false;
          catch err
-            if any(strfind(err.message,'java.lang.IllegalThreadStateException: process hasn''t exited'))
+            if any(...
+                  [strfind(err.message,'java.lang.IllegalThreadStateException: process hasn''t exited')...
+                   strfind(err.message,'java.lang.IllegalThreadStateException: process has not exited')]...
+                  )
                bool = true;
                exitValue = NaN;
             else
