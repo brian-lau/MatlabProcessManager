@@ -122,7 +122,7 @@ classdef processManager < handle
       pollTimer
    end
    properties(SetAccess = protected)
-      version = '0.4.1';
+      version = '0.4.2';
    end
    
    methods
@@ -416,6 +416,9 @@ classdef processManager < handle
          for i = 1:numel(self)
             if ~isempty(self(i).process)
                self(i).process.destroy();
+               self(i).process.getErrorStream().close()
+               self(i).process.getInputStream().close()
+               self(i).process.getOutputStream().close();
                self(i).stdoutReader.close();
                self(i).stderrReader.close();
             end
@@ -469,6 +472,9 @@ classdef processManager < handle
       function delete(self)
          if ~isempty(self.process)
             self.process.destroy();
+            self.process.getErrorStream().close()
+            self.process.getInputStream().close()
+            self.process.getOutputStream().close();
             self.stdoutReader.close();
             self.stderrReader.close();
          end
