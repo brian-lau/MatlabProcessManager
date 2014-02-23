@@ -84,10 +84,6 @@
 % o If streams are stored maybe we need to buffer a finite number of lines
 % o Generate unique names for each timer. check using timerfindall, storename
 % o cprintf for colored output for each process?
-% o timers have a wait() method. Use this for blocking?
-%   http://www.mathworks.com/help/matlab/ref/timer.wait.html
-%   looks like it won't work for periodic timer
-%   https://stackoverflow.com/questions/18359996/how-to-make-a-matlab-function-wait-until-a-timer-stops-running
 
 classdef processManager < handle
    properties(SetAccess = public)
@@ -518,7 +514,7 @@ classdef processManager < handle
          catch err
             if any(strfind(err.message,'java.io.IOException: Stream closed'))
                % pass, this can happen when processManager object is
-               % stopped or cleared, and should be harmlessgit 
+               % stopped or cleared, and should be harmless
                if pollData.verbose
                   fprintf('projectManager timer is polling a closed stream!\n');
                end
