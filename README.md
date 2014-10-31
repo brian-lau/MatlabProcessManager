@@ -9,7 +9,7 @@ A Matlab class for launching and managing processes that run asynchronously from
 
 while allowing you to continue working in the main Matlab process.
 
-Some toy examples are illustrated below and in the [wiki](https://github.com/brian-lau/MatlabProcessManager/wiki/Examples). A more elaborate application is a [Matlab interface](https://github.com/brian-lau/MatlabStan) that does MCMC sampling using [Stan](http://mc-stan.org/).
+Some toy examples are illustrated below and in the [wiki](https://github.com/brian-lau/MatlabProcessManager/wiki). A more elaborate application is a [Matlab interface](https://github.com/brian-lau/MatlabStan) that does MCMC sampling using [Stan](http://mc-stan.org/).
 
 ## Installation & Examples
 Download [processManager](https://github.com/brian-lau/MatlabProcessManager/archive/master.zip), add the m-file to your Matlab path, and you're ready to go.
