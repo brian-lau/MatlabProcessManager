@@ -3,14 +3,13 @@
 A Matlab class for launching and managing processes that run asynchronously from the main Matlab process. This can already be done with something like `system('dir &');` but processManager makes it easy to:
 
 * launch and manage multiple processes
-* peek to check on the progress of running processes
+* check on the progress of running processes
 * capture & display `stdout` and `stderr` streams of each process
 * issue event notifications when processes finish
 
 while allowing you to continue working in the main Matlab process.
 
-## Why
-Originally developed to execute long-running processes in the background that would notify when they were finished. Some toy examples are illustrated below and in the [wiki](https://github.com/brian-lau/MatlabProcessManager/wiki/Examples). A more elaborate application is a [Matlab interface](https://github.com/brian-lau/MatlabStan) that does MCMC sampling using [Stan](http://mc-stan.org/).
+Some toy examples are illustrated below and in the [wiki](https://github.com/brian-lau/MatlabProcessManager/wiki/Examples). A more elaborate application is a [Matlab interface](https://github.com/brian-lau/MatlabStan) that does MCMC sampling using [Stan](http://mc-stan.org/).
 
 ## Installation & Examples
 Download [processManager](https://github.com/brian-lau/MatlabProcessManager/archive/master.zip), add the m-file to your Matlab path, and you're ready to go.
@@ -74,4 +73,4 @@ Contributions
 --------------------------------
 Copyright (c) 2014 Brian Lau [brian.lau@upmc.fr](mailto:brian.lau@upmc.fr), see [LICENSE](https://github.com/brian-lau/MatlabProcessManager/blob/master/LICENSE.txt)
 
-Please feel from to [fork](https://github.com/brian-lau/MatlabProcessManager/fork) and contribute!
+Please feel free to [fork](https://github.com/brian-lau/MatlabProcessManager/fork) and contribute!
