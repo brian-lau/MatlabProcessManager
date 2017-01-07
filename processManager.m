@@ -9,8 +9,8 @@
 %     >> system('dir &');
 %
 %     but using processManager allows you to start and stop processes, peek
-%     and check on the progress of running processes, all the while allowing 
-%     you to continue working in the main Matlab process.
+%     and check on the progress of running processes, all while allowing you 
+%     to continue working in the main Matlab process.
 %
 %     All inputs are passed in using name/value pairs. The name is a string
 %     followed by the value (described below).
@@ -23,8 +23,7 @@
 % INPUTS
 %     command      - command to execute in separate process, can take the
 %                    form of
-%                    1) string defining complete command including
-%                    arguments
+%                    1) string defining complete command including arguments
 %                    2) cell array of strings, parsing the command and each
 %                    argument into a separate cell array element
 %
@@ -40,11 +39,10 @@
 %     verbose      - boolean to print processManager info, default false
 %     autoStart    - boolean to start process immediately, default true
 %     pollInterval - double defining polling interval in sec, default 0.5
-%                    Take care with this variable, if set too long, there is
-%                    a risk of blocking Matlab when streams buffers not drained 
-%                    fast enough
-%                    If you don't want to see output, better to set
-%                    printStdout and printStderr false
+%                    Take care with this variable, if set too long, one risks
+%                    permanently blocking Matlab when streams buffers are not 
+%                    drained fast enough. If you don't want to see output, 
+%                    it's safer to set printStdout and printStderr false
 %
 % METHODS
 %     start        - start process(es)
@@ -75,7 +73,7 @@
 %     p(2).printStdout = true;
 %     p.stop();
 % 
-%     $ Copyright (C) 2014 Brian Lau http://www.subcortex.net/ $
+%     $ Copyright (C) 2017 Brian Lau http://www.subcortex.net/ $
 %     Released under the BSD license. The license and most recent version
 %     of the code can be found on GitHub:
 %     https://github.com/brian-lau/MatlabProcessManager
@@ -111,6 +109,7 @@ classdef processManager < handle
       exitValue
    end
    properties(SetAccess = private, Hidden = true)
+      literal
       process
       state % processState() object
       stderrReader
@@ -118,7 +117,7 @@ classdef processManager < handle
       pollTimer
    end
    properties(SetAccess = protected)
-      version = '0.4.2';
+      version = '0.5.0';
    end
    
    methods
@@ -190,6 +189,7 @@ classdef processManager < handle
       end
       
       function set.command(self,command)
+         self.literal = true;
          if iscell(command)
             % StringTokenizer is used to parse the command based on spaces
             % this may not be what we want, there is an overload of exec()
@@ -201,7 +201,10 @@ classdef processManager < handle
                cmdArray(i) = java.lang.String(command{i});
             end
             self.command = cmdArray;
-         elseif ischar(command) || isa(command,'java.lang.String[]')
+         elseif ischar(command)
+            self.command = command;
+            self.literal = false;
+         elseif isa(command,'java.lang.String[]') || isa(command,'java.lang.String')
             self.command = command;
          else
             error('processManager:command:InputFormat',...
@@ -218,7 +221,7 @@ classdef processManager < handle
             error('processManager:workingDir:InputFormat',...
                'command must be a string specifying a directory.');
          end
-         if isempty(workingDir);
+         if isempty(workingDir)
             self.workingDir = pwd;
          elseif exist(workingDir,'dir') == 7
             self.workingDir = workingDir;
@@ -229,7 +232,7 @@ classdef processManager < handle
       end
       
       function set.envp(self,envp)
-         if isempty(envp);
+         if isempty(envp)
             self.envp = [];
          elseif ischar(envp)
             temp = javaArray('java.lang.String',1);
@@ -359,10 +362,16 @@ classdef processManager < handle
                continue;
             end
             try
-               self(i).process = runtime.exec(self(i).command,...
+               if self(i).literal
+                  command = self(i).command;
+               else
+                  command = self(i).parseCommand(self(i).command);
+               end
+               
+               self(i).process = runtime.exec(command,...
                   self(i).envp,...
                   java.io.File(self(i).workingDir));
-
+               
                % Process will block if streams not drained
                self(i).stdoutReader = java.io.BufferedReader(...
                   java.io.InputStreamReader(self(i).process.getInputStream()));
@@ -486,6 +495,30 @@ classdef processManager < handle
    end
    
    methods(Static)
+      function command = parseCommand(str)
+         % Break Matlab string representing full command expression into 
+         % array of Java strings to allow spaces in path to executable
+         [path,name] = fileparts(str);
+         
+         if isempty(path)
+            parts = strsplit(str,' ');
+            shift = 0;
+         else
+            parts = strsplit(str(length(path)+1:end),' ');
+            path = fullfile(path,parts{1});
+            parts(1) = [];
+            shift = 1;
+         end
+         
+         command = javaArray('java.lang.String',numel(parts) + shift);
+         if shift
+            command(1) = java.lang.String(path);
+         end
+         for i = 1:numel(parts)
+            command(i + shift) = java.lang.String(parts{i});
+         end
+      end
+      
       function pollTimerStart(t,e)
          pollData = get(t,'UserData');
          if pollData.verbose
