@@ -109,7 +109,6 @@ classdef processManager < handle
       exitValue
    end
    properties(SetAccess = private, Hidden = true)
-      literal
       process
       state % processState() object
       stderrReader
@@ -117,7 +116,7 @@ classdef processManager < handle
       pollTimer
    end
    properties(SetAccess = protected)
-      version = '0.5.0';
+      version = '0.5.1';
    end
    
    methods
@@ -189,7 +188,6 @@ classdef processManager < handle
       end
       
       function set.command(self,command)
-         self.literal = true;
          if iscell(command)
             % StringTokenizer is used to parse the command based on spaces
             % this may not be what we want, there is an overload of exec()
@@ -203,7 +201,6 @@ classdef processManager < handle
             self.command = cmdArray;
          elseif ischar(command)
             self.command = command;
-            self.literal = false;
          elseif isa(command,'java.lang.String[]') || isa(command,'java.lang.String')
             self.command = command;
          else
@@ -362,13 +359,7 @@ classdef processManager < handle
                continue;
             end
             try
-               if self(i).literal
-                  command = self(i).command;
-               else
-                  command = self(i).parseCommand(self(i).command);
-               end
-               
-               self(i).process = runtime.exec(command,...
+               self(i).process = runtime.exec(self(i).command,...
                   self(i).envp,...
                   java.io.File(self(i).workingDir));
                
@@ -495,30 +486,6 @@ classdef processManager < handle
    end
    
    methods(Static)
-      function command = parseCommand(str)
-         % Break Matlab string representing full command expression into 
-         % array of Java strings to allow spaces in path to executable
-         [path,name] = fileparts(str);
-         
-         if isempty(path)
-            parts = strsplit(str,' ');
-            shift = 0;
-         else
-            parts = strsplit(str(length(path)+1:end),' ');
-            path = fullfile(path,parts{1});
-            parts(1) = [];
-            shift = 1;
-         end
-         
-         command = javaArray('java.lang.String',numel(parts) + shift);
-         if shift
-            command(1) = java.lang.String(path);
-         end
-         for i = 1:numel(parts)
-            command(i + shift) = java.lang.String(parts{i});
-         end
-      end
-      
       function pollTimerStart(t,e)
          pollData = get(t,'UserData');
          if pollData.verbose
