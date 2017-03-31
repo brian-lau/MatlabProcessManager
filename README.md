@@ -16,17 +16,17 @@ Download [processManager](https://github.com/brian-lau/MatlabProcessManager/arch
 
 processManager was developed and tested on OSX with Matlab 2012a, but should work on all platforms that Matlab supports, so long as it is running >=R2008a (for handle objects) with JDK >=1.1 (this will always be true unless you changed the default JDK).
 
-###Optional
+### Optional
 Installing Steve Eddins's [linewrap](http://www.mathworks.com/matlabcentral/fileexchange/9909-line-wrap-a-string) function is useful for dealing with unwrapped messages. His [xUnit test framework](http://www.mathworks.com/matlabcentral/fileexchange/22846-matlab-xunit-test-framework) is required if you want to run the unit tests.
 
-###Examples
+### Examples
 
-####Running a simple command
+#### Running a simple command
 ```
 p = processManager('command','nslookup www.google.com');
 ```
 
-####Command with ongoing output
+#### Command with ongoing output
 ```
 p = processManager('command','ping www.google.com');
 
@@ -43,7 +43,7 @@ p.printStdout = true;
 p.stop();
 ```
 
-####Multiples processes using object arrays
+#### Multiples processes using object arrays
 You can pack multiple processes into an object array for easy management.
 ```
 p(1) = processManager('id','google','command','ping www.google.com','autoStart',false);
@@ -66,7 +66,7 @@ p(2).printStdout = true;
 p.stop();
 ```
 
-##Need help?
+## Need help?
 You may be able to find a solution in the [wiki](https://github.com/brian-lau/MatlabProcessManager/wiki/Potential-gotchas). Otherwise, open an [issue](https://github.com/brian-lau/MatlabProcessManager/issues).
 
 Contributions
