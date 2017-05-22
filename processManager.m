@@ -116,7 +116,7 @@ classdef processManager < handle
       pollTimer
    end
    properties(SetAccess = protected)
-      version = '0.5.1';
+      version = '0.5.2';
    end
    
    methods
@@ -144,7 +144,7 @@ classdef processManager < handle
          %                printStdout and printStderr false
          %
          p = inputParser;
-         p.KeepUnmatched= false;
+         p.KeepUnmatched = false;
          p.FunctionName = 'processManager constructor';
          p.addParamValue('id','');
          p.addParamValue('command','');
@@ -159,6 +159,10 @@ classdef processManager < handle
          p.addParamValue('verbose',false);
          p.addParamValue('pollInterval',0.05);
          p.parse(varargin{:});
+         
+         if ~usejava('jvm')
+            error([mfilename ' requires Java to run.']);
+         end
          
          self.id = p.Results.id;
          self.workingDir = p.Results.workingDir;
