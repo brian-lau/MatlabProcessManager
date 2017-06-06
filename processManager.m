@@ -97,6 +97,7 @@ classdef processManager < handle
       keepStdout
       autoStart
 
+      niceness
       verbose
       pollInterval
    end
@@ -105,6 +106,7 @@ classdef processManager < handle
       stdout = {};
    end
    properties(SetAccess = private, Dependent = true)
+      pid
       running
       exitValue
    end
@@ -116,7 +118,7 @@ classdef processManager < handle
       pollTimer
    end
    properties(SetAccess = protected)
-      version = '0.5.2';
+      version = '0.6.0';
    end
    
    methods
@@ -156,6 +158,7 @@ classdef processManager < handle
          p.addParamValue('keepStderr',false);
          p.addParamValue('wrap',80);
          p.addParamValue('autoStart',true);
+         p.addParamValue('niceness',0);
          p.addParamValue('verbose',false);
          p.addParamValue('pollInterval',0.05);
          p.parse(varargin{:});
@@ -173,6 +176,7 @@ classdef processManager < handle
          self.keepStderr = p.Results.keepStderr;
          self.wrap = p.Results.wrap;
          self.autoStart = p.Results.autoStart;
+         self.niceness = p.Results.niceness;
          self.verbose = p.Results.verbose;
          self.pollInterval = p.Results.pollInterval;
 
@@ -363,7 +367,13 @@ classdef processManager < handle
                continue;
             end
             try
-               self(i).process = runtime.exec(self(i).command,...
+               if isunix && self(i).niceness
+                  prefix = ['nice -n ' num2str(self(i).niceness) ' '];
+               else
+                  prefix = '';
+               end
+               
+               self(i).process = runtime.exec([prefix self(i).command],...
                   self(i).envp,...
                   java.io.File(self(i).workingDir));
                
@@ -425,6 +435,50 @@ classdef processManager < handle
          end
       end
 
+      function niceness = get.niceness(self)
+         % TODO
+         %  o Windows?
+         if isunix
+            if self.running
+               [s,r] = system(['ps -o nice="" -p ' num2str(self.pid)]);
+               if s==0
+                  niceness = str2double(r);
+               else
+                  niceness = NaN;
+               end
+            else
+               niceness = self.niceness;
+            end
+         else
+            niceness = NaN;
+         end
+      end
+      
+      function set.niceness(self,niceness)
+         % TODO 
+         %  o Windows?
+         if isunix
+%             assert(niceness>=0 && niceness<=19,...
+%                'niceness must be between 0 and 19.');
+            
+            status = self.renice(niceness);
+            [self(:).niceness] = deal(niceness);
+         else
+            [self(:).niceness] = deal(NaN);
+         end
+      end
+      
+      function pid = get.pid(self)
+         % TODO 
+         %  o Windows?
+         pid = nan;
+         if self.running
+            f = self.process.getClass().getDeclaredField("pid");
+            f.setAccessible(true);
+            pid = f.getLong(self.process);
+         end
+      end
+      
       function running = get.running(self)
          if isempty(self.process)
             running = false;
@@ -438,6 +492,17 @@ classdef processManager < handle
             exitValue = NaN;
          else
             [~,exitValue] = self.isRunning(self.process);
+         end
+      end
+      
+      function [status,response] = renice(self,niceness)
+         for i = 1:numel(self)
+            if self(i).running
+               [status(i),response{i}] = system(['renice -n ' num2str(niceness) ' -p ' num2str(self(i).pid)]);
+            else
+               status(i) = -1;
+               response{i} = 'process is not running';
+            end
          end
       end
       
