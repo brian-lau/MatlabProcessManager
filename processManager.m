@@ -17,7 +17,7 @@
 %     The only required input is the command.
 %     The order of the pairs does not matter, nor does the case.
 %
-%     More information and can be found on GitHub:
+%     More information can be found on GitHub:
 %     https://github.com/brian-lau/MatlabProcessManager/wiki
 %
 % INPUTS
@@ -28,17 +28,17 @@
 %                    argument into a separate cell array element
 %
 % OPTIONAL
-%     id           - string identifier for process, default ''
-%     workingDir   - string defining working directory
+%     id           - string identifier for process, default = ''
+%     workingDir   - string defining working directory, default = pwd
 %     envp         - not working yet
-%     printStdout  - boolean to print stdout stream, default true
-%     printStderr  - boolean to print stderr stream, default true
+%     printStdout  - boolean to print stdout stream, default = true
+%     printStderr  - boolean to print stderr stream, default = true
 %     wrap         - number of columns for wrapping lines, default = 80
-%     keepStdout   - boolean to keep stdout stream, default false
-%     keepStderr   - boolean to keep stderr stream, default false
-%     verbose      - boolean to print processManager info, default false
-%     autoStart    - boolean to start process immediately, default true
-%     pollInterval - double defining polling interval in sec, default 0.5
+%     keepStdout   - boolean to keep stdout stream, default = false
+%     keepStderr   - boolean to keep stderr stream, default = false
+%     verbose      - boolean to print processManager info, default = false
+%     autoStart    - boolean to start process immediately, default = true
+%     pollInterval - double defining polling interval in sec, default = 0.5
 %                    Take care with this variable, if set too long, one risks
 %                    permanently blocking Matlab when streams buffers are not 
 %                    drained fast enough. If you don't want to see output, 
@@ -137,6 +137,7 @@ classdef processManager < handle
          % keepStdout   - boolean to keep stdout stream, default false
          % keepStderr   - boolean to keep stderr stream, default false
          % autoStart    - boolean to start process immediately, default true
+         % niceness     - niceness level for process priority, default = 0
          % verbose      - boolean to print processManager info, default false
          % pollInterval - double defining polling interval in sec, default 0.5
          %                Take care with this variable, if set too long,
