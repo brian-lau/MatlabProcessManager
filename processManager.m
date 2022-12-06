@@ -520,7 +520,7 @@ classdef processManager < handle
                % pass, this can happen when processManager object is
                % stopped or cleared, and should be harmless
                if pollData.verbose
-                  fprintf('projectManager timer is polling a closed stream!\n');
+                  fprintf('processManager timer is polling a closed stream!\n');
                end
             else
                rethrow(err);
